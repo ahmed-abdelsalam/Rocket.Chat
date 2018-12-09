@@ -1,3 +1,22 @@
+import { Session } from 'meteor/session';
+
+// RocketChat.TabBar.addButton({
+// 	groups: ['direct'],
+// 	id: 'user-questionnaire',
+// 	i18nTitle: 'User Questionnaire',
+// 	icon: 'star',
+// 	template: 'questionnaire',
+// 	order: 1,
+// });
+RocketChat.TabBar.addButton({
+	groups: ['direct'],
+	id: 'user-questionnaire',
+	i18nTitle: 'user-questionnaire',
+	icon: 'star',
+	template: 'membersList',
+	order: 1,
+});
+
 RocketChat.TabBar.addButton({
 	groups: ['channel', 'group', 'direct'],
 	id: 'rocket-search',
@@ -6,6 +25,8 @@ RocketChat.TabBar.addButton({
 	template: 'RocketSearch',
 	order: 1,
 });
+
+
 
 RocketChat.TabBar.addButton({
 	groups: ['direct'],
