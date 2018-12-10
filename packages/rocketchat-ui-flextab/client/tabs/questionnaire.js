@@ -2,13 +2,13 @@ import { Meteor } from 'meteor/meteor';
 import { ReactiveVar } from 'meteor/reactive-var';
 import { Session } from 'meteor/session';
 import { Template } from 'meteor/templating';
-import { TAPi18n } from 'meteor/tap:i18n';
+import { Mongo } from 'meteor/mongo';
 import _ from 'underscore';
 import s from 'underscore.string';
 import moment from 'moment';
 import { DateFormat, RocketChat } from 'meteor/rocketchat:lib';
 import { RoomRoles, popover, UserRoles } from 'meteor/rocketchat:ui';
-import { getActions } from './userActions';
+import { Tracker } from 'meteor/tracker';
 
 const more = function() {
 	return Template.instance().actions.get()
@@ -17,8 +17,26 @@ const more = function() {
 		.slice(2);
 };
 
-
+const Questionnaire = new Mongo.Collection('questionnaire', { connection: null });
+Questionnaire.remove({});
 Template.questionnaire.helpers({
+	isGroupChat() {
+		const room = ChatRoom.findOne(this.rid, { reactive: false });
+		return RocketChat.roomTypes.roomTypes[room.t].isGroupChat();
+	},
+	userInfoDetail() {
+
+		const room = ChatRoom.findOne(this.rid, { fields: { t: 1 } });
+
+		return {
+			tabBar: Template.currentData().tabBar,
+			username: Template.instance().userDetail.get(),
+			clear: Template.instance().clearUserDetail,
+			showAll: RocketChat.roomTypes.roomTypes[room.t].userDetailShowAll(room) || false,
+			hideAdminControls: RocketChat.roomTypes.roomTypes[room.t].userDetailShowAdmin(room) || false,
+			video: ['d'].includes(room != null ? room.t : undefined),
+		};
+	},
 	hideHeader() {
 		return ['Template.adminUserInfo', 'adminUserInfo'].includes(Template.parentData(2).viewName);
 	},
@@ -60,10 +78,21 @@ Template.questionnaire.helpers({
 	},
 
 	name() {
-		const user = Template.instance().user.get();
-		return user && user.name ? user.name : TAPi18n.__('Unnamed');
+		// const user = Template.instance().user.get();
+		// return user && user.name ? user.name : TAPi18n.__('Unnamed');
+		return String(Template.instance().userDetail.get());
 	},
 
+	checkUser() {
+		return String(Template.instance().userDetail.get()) == 'test' ? 1 : null;
+	},
+	checkAnswers() {
+		const answers = Questionnaire.findOne({});
+		if (answers) {
+			return answers;
+		}
+		return null;
+	},
 	username() {
 		const user = Template.instance().user.get();
 		return user && user.username;
@@ -179,6 +208,23 @@ Template.questionnaire.helpers({
 });
 
 Template.questionnaire.events({
+	'click .remove-questionnaire'() {
+		Questionnaire.remove({});
+	},
+	'submit .questionnaire-form'(event) {
+		const answer1 = event.target.q1.value;
+		const answer2 = event.target.q2.value;
+		const answer3 = event.target.q3.value;
+		const answer4 = event.target.q4.value;
+		Questionnaire.remove({});
+		Questionnaire.insert({
+			answer1,
+			answer2,
+			answer3,
+			answer4,
+		});
+		return false;
+	},
 	'click .js-more'(e, instance) {
 		const actions = more.call(this);
 		const groups = [];
@@ -215,76 +261,55 @@ Template.questionnaire.events({
 	'click .js-action'(e) {
 		return this.action && this.action.apply(this, [e, { instance : Template.instance() }]);
 	},
-	'click .js-close-info'(e, instance) {
+	'click .js-close-info'(instance) {
 		return instance.clear();
 	},
-	'click .js-back'(e, instance) {
+	'click .js-back'(instance) {
 		return instance.clear();
 	},
 });
 
 Template.questionnaire.onCreated(function() {
-	this.now = new ReactiveVar(moment());
-	this.user = new ReactiveVar;
-	this.actions = new ReactiveVar;
+	this.showAllUsers = new ReactiveVar(false);
+	this.usersLimit = new ReactiveVar(100);
+	this.userDetail = new ReactiveVar;
+	this.showDetail = new ReactiveVar(false);
+	this.filter = new ReactiveVar('');
 
 
-	this.autorun(() => {
-		const user = this.user.get();
-		if (!user) {
-			this.actions.set([]);
-			return;
+	this.users = new ReactiveVar([]);
+	this.total = new ReactiveVar;
+	this.loading = new ReactiveVar(true);
+
+	this.tabBar = Template.instance().tabBar;
+
+	Tracker.autorun(() => {
+		if (this.data.rid == null) { return; }
+		this.loading.set(true);
+		return Meteor.call('getUsersOfRoom', this.data.rid, this.showAllUsers.get(), (error, users) => {
+			this.users.set(users.records);
+			this.total.set(users.total);
+			return this.loading.set(false);
 		}
-		const actions = getActions({
-			user,
-			hideAdminControls: this.data.hideAdminControls,
-			directActions: this.data.showAll,
-		});
-		this.actions.set(actions);
-	});
-	this.editingUser = new ReactiveVar;
-	this.loadingUserInfo = new ReactiveVar(true);
-	this.loadedUsername = new ReactiveVar;
-	this.tabBar = Template.currentData().tabBar;
+		);
+	}
+	);
 
-	Meteor.setInterval(() => this.now.set(moment()), 30000);
+	this.clearUserDetail = () => {
+		this.showDetail.set(false);
+		return setTimeout(() => this.clearRoomUserDetail(), 500);
+	};
 
-	this.autorun(() => {
-		const username = this.loadedUsername.get();
+	this.showUserDetail = (username) => {
+		this.showDetail.set(username != null);
+		return this.userDetail.set(username);
+	};
 
-		if (username == null) {
-			this.loadingUserInfo.set(false);
-			return;
-		}
-
-		this.loadingUserInfo.set(true);
-
-		return this.subscribe('fullUserData', username, 1, () => this.loadingUserInfo.set(false));
-	});
-
-	this.autorun(() => {
-		const data = Template.currentData();
-		if (data.clear != null) {
-			return this.clear = data.clear;
-		}
-	});
-
-	this.autorun(() => {
-		const data = Template.currentData();
-		const user = this.user.get();
-		return this.loadedUsername.set((user != null ? user.username : undefined) || (data != null ? data.username : undefined));
-	});
+	this.clearRoomUserDetail = this.data.clearUserDetail;
 
 	return this.autorun(() => {
-		let filter;
 		const data = Template.currentData();
-		if (data && data.username != null) {
-			filter = { username: data.username };
-		} else if (data && data._id != null) {
-			filter = { _id: data._id };
-		}
-		const user = Meteor.users.findOne(filter);
-
-		return this.user.set(user);
-	});
+		return this.showUserDetail(data.userDetail);
+	}
+	);
 });
