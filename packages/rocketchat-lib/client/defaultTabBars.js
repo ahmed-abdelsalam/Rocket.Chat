@@ -1,21 +1,18 @@
 import { Session } from 'meteor/session';
 
-// RocketChat.TabBar.addButton({
-// 	groups: ['direct'],
-// 	id: 'user-questionnaire',
-// 	i18nTitle: 'User Questionnaire',
-// 	icon: 'star',
-// 	template: 'questionnaire',
-// 	order: 1,
-// });
-RocketChat.TabBar.addButton({
-	groups: ['direct'],
-	id: 'user-questionnaire',
-	i18nTitle: 'user-questionnaire',
-	icon: 'star',
-	template: 'membersList',
-	order: 1,
-});
+
+if (String(document.URL) == "http://127.0.0.1:3000/direct/test") {
+	console.log(String(document.URL));
+	RocketChat.TabBar.addButton({
+		groups: ['direct'],
+		id: 'user-questionnaire',
+		i18nTitle: 'user-questionnaire',
+		icon: 'chat',
+		template: 'questionnaire',
+		order: 1,
+	});
+}
+
 
 RocketChat.TabBar.addButton({
 	groups: ['channel', 'group', 'direct'],
